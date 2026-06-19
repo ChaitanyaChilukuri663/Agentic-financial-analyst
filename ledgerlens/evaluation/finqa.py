@@ -23,12 +23,21 @@ from ledgerlens.executor.program import execute
 
 @dataclass
 class FinqaExample:
-    """A single FinQA item reduced to what the replay needs."""
+    """A single FinQA item: the gold program/answer plus the question and context."""
 
     uid: str
     program: str
     gold_answer: object
     table: Table
+    question: str = ""
+    pre_text: str = ""
+    post_text: str = ""
+
+    def context(self) -> str:
+        """Assemble the evidence the solver sees: pre-text, table rows, post-text."""
+        table_text = "\n".join(" | ".join(row) for row in self.table.rows)
+        parts = [self.pre_text.strip(), table_text.strip(), self.post_text.strip()]
+        return "\n\n".join(part for part in parts if part)
 
 
 @dataclass
@@ -54,12 +63,17 @@ def load_finqa(path: str | Path) -> list[FinqaExample]:
         program = qa.get("program")
         if not program:
             continue
+        pre = item.get("pre_text", [])
+        post = item.get("post_text", [])
         examples.append(
             FinqaExample(
                 uid=item.get("id", ""),
                 program=program,
                 gold_answer=qa.get("exe_ans"),
                 table=Table(rows=[[str(cell) for cell in row] for row in item.get("table", [])]),
+                question=qa.get("question", ""),
+                pre_text=" ".join(pre) if isinstance(pre, list) else str(pre),
+                post_text=" ".join(post) if isinstance(post, list) else str(post),
             )
         )
     return examples
