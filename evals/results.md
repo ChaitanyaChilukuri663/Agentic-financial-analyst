@@ -103,26 +103,26 @@ checked against a value the company actually filed, not just fuzzy-matched again
 Reproduce: `EdgarClient(ua).latest_10k(320193)` → `parse_filing_html(html)`; grounding via
 `match_value(parse_company_facts(client.company_facts(320193)), value)`.
 
-### Retrieval — BM25 baseline
+### Retrieval — BM25 vs dense vs hybrid
 
 The table-aware retriever builds **row-level chunks that carry their header/caption/unit
-context**, indexes them with **BM25 (lexical) + dense vectors (cosine)**, and fuses the two
-with **Reciprocal Rank Fusion**. Lexical recall on FinQA dev (n=883; `gold_coverage` 100% —
-chunk ids align exactly with FinQA's `gold_inds`, so relevance labels are exact):
+context**, then ranks with **BM25 (lexical)**, **dense vectors** (`text-embedding-3-small`,
+cosine), and a **hybrid** that fuses both via **Reciprocal Rank Fusion**. FinQA dev, n=150,
+`gold_coverage` 100% (chunk ids align exactly with FinQA's `gold_inds`, so labels are exact):
 
-| k | recall@k | hit@k |
-|--:|---------:|------:|
-| 1 | 48.2% | 66.0% |
-| 3 | 71.4% | 86.0% |
-| 5 | 82.1% | 92.5% |
+| method | recall@1 | recall@3 | recall@5 | hit@3 | hit@5 |
+|--------|---------:|---------:|---------:|------:|------:|
+| BM25 | 50.8% | 74.4% | 81.9% | 84.7% | 90.0% |
+| dense (vector) | 51.9% | 74.4% | 82.6% | 88.7% | 93.3% |
+| **hybrid (RRF)** | **52.1%** | **78.1%** | **85.6%** | **90.7%** | **94.0%** |
 
-This is the **lexical-only baseline** (no LLM / embeddings). Dense + hybrid retrieval are
-implemented (`embed_fn` → cosine + RRF fusion); the FinQA dense run is currently pending an
-embeddings **quota bump** — the S0 `text-embedding-3-small` default TPM is too low to embed
-at volume (429s persist through retries). The harder real-filing / FinanceBench retrieval
-eval is the next differentiator. (recall@k = fraction of an example's gold supporting facts
-in the top-k; hit@k = at least one.)
+**Hybrid wins at every cutoff** — BM25 anchors exact lexical matches (line items, years),
+dense lifts deeper recall on semantically-phrased questions, and RRF fusion keeps both
+(+3.7pp recall@5, +4pp hit@5 over BM25 alone). On FinQA's clean single-page contexts the
+gap is modest by design; the larger payoff is expected on real, long 10-Ks where many chunks
+compete — the FinanceBench retrieval eval is the next step. (recall@k = fraction of an
+example's gold supporting facts in the top-k; hit@k = at least one.)
 
-Reproduce: `python -m ledgerlens.evaluation.retrieval data/finqa/dev.json`
+Reproduce: `python -m ledgerlens.evaluation.retrieval data/finqa/dev.json 150 dense`
 
 
