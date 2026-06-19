@@ -43,7 +43,7 @@ PHASE 2 AGENT: plan → act → observe → revise → terminate, calling Ledger
 |------|-------|--------|
 | **P0** | Scaffold: package layout, config, multi-provider `llm_client`, ruff + pytest + CI | ✅ done |
 | **P1** | Deterministic program executor + FinQA gold-program replay — **reproduces 99.5% of 8,281 FinQA gold programs, zero LLM** ([results](evals/results.md)) | ✅ done |
-| **P2** | Extract→plan solver (LLM proposes a program) wired to the executor + determinism-baseline harness — code done & mocked-tested; live baseline run pending Azure creds ([setup](docs/azure-openai-setup.md)) | 🟡 code done |
+| **P2** | Extract→plan solver + determinism baseline ✅ — on FinQA, program+executor beats LLM-direct by **~8pp on multi-step arithmetic** ([results](evals/results.md)) | ✅ done |
 | **P2.5** | Real-10-K ingestion spike (fetch one filing, validate table extraction) | ☐ |
 | **P3** | EDGAR HTML/iXBRL ingestion ✅ + table-aware hybrid retriever ✅ (BM25 baseline: recall@5 82%, hit@5 93% on FinQA; dense/hybrid + real-filing/FinanceBench eval pending embeddings) | 🟡 retriever done |
 | **P4** | Validation/abstention gates + citations + error taxonomy + baselines → `evals/results.md` | ☐ |

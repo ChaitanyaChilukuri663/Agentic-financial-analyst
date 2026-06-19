@@ -19,7 +19,7 @@ import json
 import logging
 from typing import Any, TypeVar
 
-from openai import APIError, AzureOpenAI, OpenAI
+from openai import AzureOpenAI, OpenAI, OpenAIError
 from pydantic import BaseModel
 
 from ledgerlens.config import Provider, Settings, get_settings
@@ -57,7 +57,20 @@ class LLMClient:
     def _provider_order(self) -> list[Provider]:
         order = [self.settings.provider]
         order += [p for p in self.settings.fallback_providers if p != self.settings.provider]
-        return order
+        # Only try providers we have credentials for (or an injected client, used in tests).
+        return [p for p in order if self._has_credentials(p)]
+
+    def _has_credentials(self, provider: Provider) -> bool:
+        if provider in self._clients:
+            return True
+        s = self.settings
+        if provider is Provider.AZURE:
+            return bool(s.azure_openai_api_key and s.azure_openai_endpoint)
+        if provider is Provider.GITHUB:
+            return bool(s.github_token)
+        if provider is Provider.GROQ:
+            return bool(s.groq_api_key)
+        return False
 
     # -- lazy client construction ------------------------------------------
     def _client_for(self, provider: Provider) -> OpenAI:
@@ -76,21 +89,21 @@ class LLMClient:
                 azure_endpoint=s.azure_openai_endpoint,
                 api_key=s.azure_openai_api_key,
                 api_version=s.azure_openai_api_version,
-                max_retries=s.max_retries,
+                max_retries=max(s.max_retries, 6),
                 http_client=http_client,
             )
         if provider is Provider.GITHUB:
             return OpenAI(
                 base_url=GITHUB_MODELS_BASE_URL,
                 api_key=s.github_token,
-                max_retries=s.max_retries,
+                max_retries=max(s.max_retries, 6),
                 http_client=http_client,
             )
         if provider is Provider.GROQ:
             return OpenAI(
                 base_url=GROQ_BASE_URL,
                 api_key=s.groq_api_key,
-                max_retries=s.max_retries,
+                max_retries=max(s.max_retries, 6),
                 http_client=http_client,
             )
         raise ValueError(f"unknown provider: {provider}")
@@ -146,7 +159,7 @@ class LLMClient:
                     temperature=temperature,
                 )
                 return self._parse_tool_call(completion, response_model, tool_name)
-            except (APIError, ValueError) as exc:
+            except (OpenAIError, ValueError) as exc:
                 last_error = exc
                 logger.warning("provider %s failed for chat_structured: %s", provider.value, exc)
         raise LLMError("all providers failed for chat_structured") from last_error
@@ -162,7 +175,7 @@ class LLMClient:
                 client = self._client_for(provider)
                 response = client.embeddings.create(model=self._embed_model(provider), input=texts)
                 return [item.embedding for item in response.data]
-            except (APIError, ValueError) as exc:
+            except (OpenAIError, ValueError) as exc:
                 last_error = exc
                 logger.warning("provider %s failed for embed: %s", provider.value, exc)
         raise LLMError("all providers failed for embed") from last_error

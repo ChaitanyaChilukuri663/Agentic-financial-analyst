@@ -60,6 +60,28 @@ separators, parenthesised negatives) for real 10-K tables in P3.
 python -m ledgerlens.evaluation.finqa_replay data/finqa/dev.json
 ```
 
+## P2 — Determinism baseline (program+executor vs LLM-direct)
+
+The core thesis: having the LLM propose a *program* that the deterministic executor runs
+beats letting the LLM do the arithmetic itself — most where the arithmetic is hard. Both
+modes use the same model (Azure `gpt-4.1-mini`) over the same FinQA evidence; only *who
+computes* differs. FinQA dev, n=120:
+
+| Subset | program + executor | LLM direct |
+|--------|-------------------:|-----------:|
+| single-step programs (n=68) | 60.3% | 69.1% |
+| **multi-step programs (n=52)** | **51.9%** | **44.2%** |
+| overall (n=120) | 56.7% | 58.3% |
+
+The headline is the **crossover**: on one-step ratios a strong model computes fine on its
+own (and proposing/parsing a program adds a little failure surface), but on **multi-step
+calculations the executor wins by ~8 points** — determinism pays off exactly where mental
+arithmetic breaks down. And beyond accuracy, every program-mode answer is **cited,
+inspectable, and provably computed** (the executor reproduces 99.5% of gold programs) —
+which the direct mode cannot offer at any accuracy.
+
+Reproduce: `python -m ledgerlens.evaluation.finqa_qa data/finqa/dev.json 120`
+
 ## P3 — Real 10-K ingestion (validation)
 
 Ingestion is **HTML/iXBRL-first** (EDGAR's canonical format), so tables are parsed
@@ -94,10 +116,12 @@ chunk ids align exactly with FinQA's `gold_inds`, so relevance labels are exact)
 | 3 | 71.4% | 86.0% |
 | 5 | 82.1% | 92.5% |
 
-This is the **lexical-only baseline** (no LLM / embeddings). The dense and hybrid numbers,
-the vector-vs-BM25-vs-hybrid comparison, and the harder real-filing / FinanceBench retrieval
-eval land once `text-embedding-3-small` is wired. (recall@k = fraction of an example's gold
-supporting facts in the top-k; hit@k = at least one.)
+This is the **lexical-only baseline** (no LLM / embeddings). Dense + hybrid retrieval are
+implemented (`embed_fn` → cosine + RRF fusion); the FinQA dense run is currently pending an
+embeddings **quota bump** — the S0 `text-embedding-3-small` default TPM is too low to embed
+at volume (429s persist through retries). The harder real-filing / FinanceBench retrieval
+eval is the next differentiator. (recall@k = fraction of an example's gold supporting facts
+in the top-k; hit@k = at least one.)
 
 Reproduce: `python -m ledgerlens.evaluation.retrieval data/finqa/dev.json`
 

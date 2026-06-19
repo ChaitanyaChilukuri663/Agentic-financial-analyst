@@ -88,4 +88,4 @@ def test_finqa_recall_harness_synthetic() -> None:
     report = evaluate_finqa_items([item], k_values=(1, 3))
     assert report.total == 1
     assert report.gold_coverage == 1.0
-    assert report.recall[3] == 1.0
+    assert report.methods["bm25"].recall[3] == 1.0
