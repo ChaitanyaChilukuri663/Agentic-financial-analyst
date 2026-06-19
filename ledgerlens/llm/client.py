@@ -17,14 +17,13 @@ from __future__ import annotations
 
 import json
 import logging
-import ssl
 from typing import Any, TypeVar
 
-import httpx
 from openai import APIError, AzureOpenAI, OpenAI
 from pydantic import BaseModel
 
 from ledgerlens.config import Provider, Settings, get_settings
+from ledgerlens.net import build_http_client
 
 logger = logging.getLogger(__name__)
 
@@ -39,23 +38,6 @@ _EMBED_PROVIDERS = (Provider.AZURE, Provider.GITHUB)
 
 class LLMError(RuntimeError):
     """Raised when every configured provider fails for a request."""
-
-
-def _build_http_client(*, use_os_truststore: bool, timeout_s: float) -> httpx.Client:
-    """Build an httpx client, optionally trusting the OS certificate store.
-
-    Behind a TLS-inspecting proxy (e.g. Zscaler) the proxy's CA is in the OS store
-    but not in ``certifi``; ``truststore`` bridges Python's TLS to the OS store.
-    """
-    if use_os_truststore:
-        try:
-            import truststore
-
-            ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            return httpx.Client(verify=ctx, timeout=timeout_s)
-        except Exception:  # pragma: no cover - truststore missing/unsupported
-            logger.warning("truststore unavailable; using default SSL verification")
-    return httpx.Client(timeout=timeout_s)
 
 
 class LLMClient:
@@ -85,7 +67,7 @@ class LLMClient:
 
     def _build_client(self, provider: Provider) -> OpenAI:
         s = self.settings
-        http_client = _build_http_client(
+        http_client = build_http_client(
             use_os_truststore=s.use_os_truststore,
             timeout_s=s.request_timeout_s,
         )

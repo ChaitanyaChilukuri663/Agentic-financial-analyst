@@ -59,3 +59,26 @@ separators, parenthesised negatives) for real 10-K tables in P3.
 # Place dataset/{train,dev,test}.json under data/finqa/, then:
 python -m ledgerlens.evaluation.finqa_replay data/finqa/dev.json
 ```
+
+## P3 — Real 10-K ingestion (validation)
+
+Ingestion is **HTML/iXBRL-first** (EDGAR's canonical format), so tables are parsed
+deterministically with BeautifulSoup — no OCR, no column-boundary guessing. Validated
+live on Apple's FY2025 10-K (CIK 320193):
+
+| Metric | Value |
+|--------|------:|
+| Filing HTML size | 1.5 MB |
+| Item sections segmented | 23 (Item 1 … 9C) |
+| Tables extracted | 53 |
+| Tables with a detected unit ("in millions", …) | 49 |
+| XBRL facts parsed (companyfacts) | 24,852 |
+| Operand grounding | `383,285M` → `RevenueFromContractWithCustomerExcludingAssessedTax` ✓ |
+
+The XBRL companyfacts feed is a **ground-truth anchor**: an extracted operand can be
+checked against a value the company actually filed, not just fuzzy-matched against text.
+
+Reproduce: `EdgarClient(ua).latest_10k(320193)` → `parse_filing_html(html)`; grounding via
+`match_value(parse_company_facts(client.company_facts(320193)), value)`. *(Table-aware
+hybrid retrieval + recall@k eval + FinanceBench stress test: next P3 step.)*
+
