@@ -17,10 +17,9 @@ env/
 .env.local
 *.key
 
-# Data & artifacts (large; fetched/generated locally)
-data/raw/
-data/cache/
-data/index/
+# Data & artifacts (datasets, clones, caches, indexes) — keep only the README
+data/*
+!data/README.md
 *.faiss
 *.sqlite
 

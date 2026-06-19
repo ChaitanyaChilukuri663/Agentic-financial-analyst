@@ -42,8 +42,8 @@ PHASE 2 AGENT: plan → act → observe → revise → terminate, calling Ledger
 | Phase | Scope | Status |
 |------|-------|--------|
 | **P0** | Scaffold: package layout, config, multi-provider `llm_client`, ruff + pytest + CI | ✅ done |
-| **P1** | Deterministic program executor + FinQA gold-program replay harness (first hard number, zero LLM) | ⏳ next |
-| **P2** | FinQA extract→plan call wired to the executor → determinism baseline | ☐ |
+| **P1** | Deterministic program executor + FinQA gold-program replay — **reproduces 99.5% of 8,281 FinQA gold programs, zero LLM** ([results](evals/results.md)) | ✅ done |
+| **P2** | FinQA extract→plan call wired to the executor → determinism baseline | ⏳ next |
 | **P2.5** | Real-10-K ingestion spike (fetch one filing, validate table extraction) | ☐ |
 | **P3** | EDGAR HTML/iXBRL ingestion + table-aware hybrid RAG + retrieval eval + FinanceBench stress test | ☐ |
 | **P4** | Validation/abstention gates + citations + error taxonomy + baselines → `evals/results.md` | ☐ |
