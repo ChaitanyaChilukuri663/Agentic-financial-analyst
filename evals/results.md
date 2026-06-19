@@ -79,6 +79,26 @@ The XBRL companyfacts feed is a **ground-truth anchor**: an extracted operand ca
 checked against a value the company actually filed, not just fuzzy-matched against text.
 
 Reproduce: `EdgarClient(ua).latest_10k(320193)` → `parse_filing_html(html)`; grounding via
-`match_value(parse_company_facts(client.company_facts(320193)), value)`. *(Table-aware
-hybrid retrieval + recall@k eval + FinanceBench stress test: next P3 step.)*
+`match_value(parse_company_facts(client.company_facts(320193)), value)`.
+
+### Retrieval — BM25 baseline
+
+The table-aware retriever builds **row-level chunks that carry their header/caption/unit
+context**, indexes them with **BM25 (lexical) + dense vectors (cosine)**, and fuses the two
+with **Reciprocal Rank Fusion**. Lexical recall on FinQA dev (n=883; `gold_coverage` 100% —
+chunk ids align exactly with FinQA's `gold_inds`, so relevance labels are exact):
+
+| k | recall@k | hit@k |
+|--:|---------:|------:|
+| 1 | 48.2% | 66.0% |
+| 3 | 71.4% | 86.0% |
+| 5 | 82.1% | 92.5% |
+
+This is the **lexical-only baseline** (no LLM / embeddings). The dense and hybrid numbers,
+the vector-vs-BM25-vs-hybrid comparison, and the harder real-filing / FinanceBench retrieval
+eval land once `text-embedding-3-small` is wired. (recall@k = fraction of an example's gold
+supporting facts in the top-k; hit@k = at least one.)
+
+Reproduce: `python -m ledgerlens.evaluation.retrieval data/finqa/dev.json`
+
 
