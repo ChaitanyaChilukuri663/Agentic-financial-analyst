@@ -8,7 +8,7 @@ makes the computation non-hallucinatory.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from ledgerlens.executor.dsl import Program, Table
@@ -29,6 +29,7 @@ class SolveResult:
     program: Program | None = None
     proposal: ProgramProposal | None = None
     error: str | None = None
+    steps: list[Decimal | bool] = field(default_factory=list)
 
 
 def solve_program(
@@ -49,7 +50,9 @@ def solve_program(
     if not result.ok:
         code = result.error.code if result.error else "unknown"
         return SolveResult(ok=False, program=program, proposal=proposal, error=f"exec_error:{code}")
-    return SolveResult(ok=True, answer=result.value, program=program, proposal=proposal)
+    return SolveResult(
+        ok=True, answer=result.value, program=program, proposal=proposal, steps=result.steps
+    )
 
 
 def solve_direct(client: LLMClient, question: str, context: str) -> str:

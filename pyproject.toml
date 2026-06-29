@@ -23,6 +23,11 @@ dev = [
     "ruff>=0.5",
     "pytest>=8.2",
 ]
+demo = [
+    "streamlit>=1.36",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+]
 
 [build-system]
 requires = ["hatchling"]

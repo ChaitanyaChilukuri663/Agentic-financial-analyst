@@ -47,7 +47,7 @@ PHASE 2 AGENT: plan → act → observe → revise → terminate, calling Ledger
 | **P2.5** | Real-10-K ingestion spike (fetch one filing, validate table extraction) | ☐ |
 | **P3** | EDGAR HTML/iXBRL ingestion ✅ + table-aware hybrid retriever ✅ — hybrid (BM25+dense, RRF) beats either alone on FinQA (**recall@5 85.6% / hit@5 94%**); real-filing/FinanceBench eval next | ✅ done |
 | **P4** | Validation/abstention gates ✅ (grounding/validity/sanity → precision 60→64.5%, **0% false-abstain**) + error taxonomy ✅ (reasoning, not arithmetic, is the bottleneck); RAG-vs-one-shot baseline next | 🟡 gates done |
-| **P5** | Streamlit + FastAPI demo + free-host deploy + `DEPLOY.md` (Azure scale-up path) | ☐ |
+| **P5** | Streamlit + FastAPI demo ✅ (question → program + computed steps + citations + gate verdict) + [DEPLOY.md](DEPLOY.md); free-host deploy is a 1-click on Streamlit Cloud | 🟡 built |
 | **P6** | Phase 2 agent loop wrapping LedgerLens as a verified tool + agent telemetry eval | ☐ |
 
 ## Tech stack
@@ -72,6 +72,21 @@ pytest                        # unit tests (LLM is mocked; no network or keys ne
 ```
 
 `pytest` runs fully offline — the LLM client is mocked. Live provider tests are opt-in (`pytest -m live`) and require real credentials.
+
+## Demo (Streamlit + FastAPI)
+
+```bash
+pip install -e ".[demo]"          # adds streamlit, fastapi, uvicorn
+cp .env.example .env              # fill in Azure OpenAI endpoint + key
+
+streamlit run ledgerlens/ui/app.py          # interactive UI
+uvicorn ledgerlens.api.app:app --reload     # JSON API at /docs
+```
+
+The UI takes a question + evidence and shows the **proposed program**, the **deterministic
+computed steps**, the **cited operands**, and the **gate verdict** (answer or abstain). See
+[DEPLOY.md](DEPLOY.md) for free-host deploy (Streamlit Community Cloud / Hugging Face Spaces)
+and the documented Azure scale-up path.
 
 ## Datasets & attribution
 

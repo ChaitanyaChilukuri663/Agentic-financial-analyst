@@ -1,0 +1,14 @@
+# Runtime + demo dependencies for free-host deploy (Streamlit Cloud / HF Spaces).
+# Library deps mirror pyproject.toml [project.dependencies]; the last block is the demo UI/API.
+openai>=1.40
+pydantic>=2.7
+pydantic-settings>=2.3
+httpx>=0.27
+truststore>=0.9
+beautifulsoup4>=4.12
+lxml>=5.0
+rank-bm25>=0.2.2
+numpy>=1.26
+streamlit>=1.36
+fastapi>=0.110
+uvicorn>=0.29
