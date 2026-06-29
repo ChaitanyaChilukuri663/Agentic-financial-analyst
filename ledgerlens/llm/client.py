@@ -157,6 +157,7 @@ class LLMClient:
                     tools=[tool],
                     tool_choice={"type": "function", "function": {"name": tool_name}},
                     temperature=temperature,
+                    parallel_tool_calls=False,
                 )
                 return self._parse_tool_call(completion, response_model, tool_name)
             except (OpenAIError, ValueError) as exc:

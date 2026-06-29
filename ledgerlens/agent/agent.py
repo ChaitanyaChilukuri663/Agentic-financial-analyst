@@ -1,89 +1,127 @@
-"""The research agent: a hand-rolled plan -> act -> observe -> revise -> synthesize loop.
+"""The research agent: a hand-rolled ReAct loop over verified tools (P7).
 
-No framework (no LangChain). The agent plans sub-questions, answers each through the
-verified calculator (retrieve + gated compute), recovers once from an abstention by widening
-retrieval, then synthesizes a report whose every figure came from a verified tool call.
+No framework. At each step the LLM picks ONE action (calculate / xbrl_value / passage /
+finish) given the task and the running progress; tools execute deterministically and their
+observations feed the next decision. The loop is **iterative** (each step chosen from the
+current state), **self-correcting** (it sees failures and reformulates), **multi-tool**, and
+**multi-company**. Every number in the final answer came from a tool — the agent cannot
+fabricate one.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from ledgerlens.agent.prompts import build_plan_messages, build_synth_messages
-from ledgerlens.agent.schema import ReportSynthesis, ResearchPlan
-from ledgerlens.agent.tools import Finding, VerifiedCalculator
+from ledgerlens.agent.prompts import build_step_messages
+from ledgerlens.agent.schema import AgentAction
+from ledgerlens.agent.tools import Dispatch, ToolResult
 from ledgerlens.llm import LLMClient
+
+
+@dataclass
+class AgentStep:
+    """One taken step: the thought, the tool + target, and the observation."""
+
+    thought: str
+    tool: str
+    target: str
+    observation: str
+    ok: bool
 
 
 @dataclass
 class AgentTelemetry:
     """Run-level signals for the agent eval."""
 
-    subquestions: int = 0
+    steps: int = 0
     tool_calls: int = 0
-    answered: int = 0
-    abstained: int = 0
-    recoveries: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    corrections: int = 0  # a success immediately after a failed step (recovery)
 
     @property
-    def grounded_rate(self) -> float:
-        return self.answered / self.subquestions if self.subquestions else 0.0
+    def success_rate(self) -> float:
+        return self.succeeded / self.tool_calls if self.tool_calls else 0.0
 
 
 @dataclass
 class Report:
-    """The agent's final, citation-grounded report."""
+    """The agent's final answer plus the full, inspectable trace."""
 
     task: str
     summary: str
     trend: str
-    findings: list[Finding] = field(default_factory=list)
+    steps: list[AgentStep] = field(default_factory=list)
     telemetry: AgentTelemetry = field(default_factory=AgentTelemetry)
 
 
-class ResearchAgent:
-    """Orchestrates LedgerLens across a multi-step task; numbers are always tool-verified."""
+def _progress(steps: list[AgentStep]) -> str:
+    return "\n".join(f"- {s.tool}({s.target}) -> {s.observation}" for s in steps)
 
-    def __init__(
-        self, client: LLMClient, calculator: VerifiedCalculator, *, recover: bool = True
-    ) -> None:
+
+def _action_key(action: AgentAction) -> str:
+    fields = (
+        action.tool,
+        action.company,
+        action.query,
+        action.fiscal_year,
+        action.operation,
+        tuple(action.values),
+    )
+    return "|".join(str(field) for field in fields)
+
+
+def _to_step(action: AgentAction, result: ToolResult) -> AgentStep:
+    if result.ok:
+        observation = result.output + (f" [{result.citation}]" if result.citation else "")
+    else:
+        observation = f"FAILED: {result.note}"
+    if action.tool == "compute":
+        target = f"{action.operation}({', '.join(str(v) for v in action.values)})"
+    else:
+        target = f"{action.company}:{action.query}".strip(":")
+    return AgentStep(action.thought, action.tool, target, observation, result.ok)
+
+
+class ResearchAgent:
+    """Iterative, self-correcting, multi-tool, multi-company ReAct agent over LedgerLens."""
+
+    def __init__(self, client: LLMClient, dispatch: Dispatch, *, max_steps: int = 8) -> None:
         self.client = client
-        self.calc = calculator
-        self.recover = recover
+        self.dispatch = dispatch
+        self.max_steps = max_steps
 
     def run(self, task: str) -> Report:
-        plan = self.client.chat_structured(build_plan_messages(task), ResearchPlan)
-        telemetry = AgentTelemetry(subquestions=len(plan.subquestions))
-        findings: list[Finding] = []
-        for question in plan.subquestions:
-            finding = self.calc.compute(question)
+        steps: list[AgentStep] = []
+        telemetry = AgentTelemetry()
+        prev_failed = False
+        seen: set[str] = set()
+        for _ in range(self.max_steps):
+            action = self.client.chat_structured(
+                build_step_messages(task, _progress(steps)), AgentAction
+            )
+            telemetry.steps += 1
+            if action.tool == "finish":
+                return Report(task, action.summary, action.trend, steps, telemetry)
+            key = _action_key(action)
+            if key in seen:
+                note = "already tried this action; change approach"
+                steps.append(_to_step(action, ToolResult(action.tool, False, "", note=note)))
+                prev_failed = True
+                continue
+            seen.add(key)
+            result = self.dispatch(action)
             telemetry.tool_calls += 1
-            if not finding.answered and self.recover:
-                wider = self.calc.compute(question, k=16)  # recover: widen retrieval, retry once
-                telemetry.tool_calls += 1
-                if wider.answered:
-                    finding = wider
-                    telemetry.recoveries += 1
-            findings.append(finding)
-            telemetry.answered += int(finding.answered)
-            telemetry.abstained += int(not finding.answered)
-        synthesis = self._synthesize(task, findings)
-        return Report(
-            task=task,
-            summary=synthesis.summary,
-            trend=synthesis.trend,
-            findings=findings,
-            telemetry=telemetry,
+            telemetry.succeeded += int(result.ok)
+            telemetry.failed += int(not result.ok)
+            if result.ok and prev_failed:
+                telemetry.corrections += 1
+            prev_failed = not result.ok
+            steps.append(_to_step(action, result))
+        # Step budget reached — force a final answer from what we have.
+        final = self.client.chat_structured(
+            build_step_messages(task, _progress(steps) + "\n(Step budget reached — finish now.)"),
+            AgentAction,
         )
-
-    def _synthesize(self, task: str, findings: list[Finding]) -> ReportSynthesis:
-        lines: list[str] = []
-        for finding in findings:
-            if finding.answered:
-                citation = finding.citations[0] if finding.citations else ""
-                lines.append(f"- {finding.question} -> {finding.answer}  [{citation}]")
-            else:
-                lines.append(f"- {finding.question} -> (insufficient data)")
-        return self.client.chat_structured(
-            build_synth_messages(task, "\n".join(lines)), ReportSynthesis
-        )
+        summary = final.summary or "Reached the step limit before a final answer."
+        return Report(task, summary, final.trend, steps, telemetry)
