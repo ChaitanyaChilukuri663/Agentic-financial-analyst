@@ -46,7 +46,7 @@ PHASE 2 AGENT: plan → act → observe → revise → terminate, calling Ledger
 | **P2** | Extract→plan solver + determinism baseline ✅ — on FinQA, program+executor beats LLM-direct by **~8pp on multi-step arithmetic** ([results](evals/results.md)) | ✅ done |
 | **P2.5** | Real-10-K ingestion spike (fetch one filing, validate table extraction) | ☐ |
 | **P3** | EDGAR HTML/iXBRL ingestion ✅ + table-aware hybrid retriever ✅ — hybrid (BM25+dense, RRF) beats either alone on FinQA (**recall@5 85.6% / hit@5 94%**); real-filing/FinanceBench eval next | ✅ done |
-| **P4** | Validation/abstention gates + citations + error taxonomy + baselines → `evals/results.md` | ☐ |
+| **P4** | Validation/abstention gates ✅ (grounding/validity/sanity → precision 60→64.5%, **0% false-abstain**) + error taxonomy ✅ (reasoning, not arithmetic, is the bottleneck); RAG-vs-one-shot baseline next | 🟡 gates done |
 | **P5** | Streamlit + FastAPI demo + free-host deploy + `DEPLOY.md` (Azure scale-up path) | ☐ |
 | **P6** | Phase 2 agent loop wrapping LedgerLens as a verified tool + agent telemetry eval | ☐ |
 

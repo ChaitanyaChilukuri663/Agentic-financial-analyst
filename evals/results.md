@@ -125,4 +125,38 @@ example's gold supporting facts in the top-k; hit@k = at least one.)
 
 Reproduce: `python -m ledgerlens.evaluation.retrieval data/finqa/dev.json 150 dense`
 
+## P4 — Validation & abstention gates
+
+A computed answer is returned only if it clears deterministic, hard-to-fake gates:
+**program validity** (parsed + executed), **operand grounding** (every literal traces to the
+evidence, a filed XBRL fact, or a math constant), and **numeric sanity** (finite, plausible
+magnitude). No LLM self-confidence is used. FinQA dev, n=100 (Azure `gpt-4.1-mini`):
+
+| metric | value |
+|--------|------:|
+| accuracy, no gates (all answers) | 60.0% |
+| coverage (answers the gates allow) | 93.0% |
+| **precision on answered** | **64.5%** |
+| false-abstain rate (correct answers declined) | **0.0%** |
+
+The gates raise precision from 60.0% → 64.5% while **declining only wrong answers** (0%
+false-abstain in this slice) — the system trades a little coverage for higher reliability,
+at no cost to correct answers here.
+
+### Program-level error taxonomy (of the 40 wrong answers)
+
+| failure | count |
+|---------|------:|
+| wrong program structure (wrong ops / approach) | 33 |
+| wrong operands (right structure, wrong numbers) | 4 |
+| parse / execution failure | 3 |
+
+The decisive insight: **the dominant failure is reasoning, not arithmetic or fabrication.**
+The executor is exact (P1) and operands are almost always grounded, so the remaining gap is
+the LLM choosing the wrong *program structure* — which is also why operand-grounding can't
+catch these (the numbers are real, the plan is wrong). That is the honest frontier for this
+architecture.
+
+Reproduce: `python -m ledgerlens.evaluation.abstention data/finqa/dev.json 100`
+
 
