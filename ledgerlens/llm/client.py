@@ -89,21 +89,21 @@ class LLMClient:
                 azure_endpoint=s.azure_openai_endpoint,
                 api_key=s.azure_openai_api_key,
                 api_version=s.azure_openai_api_version,
-                max_retries=max(s.max_retries, 6),
+                max_retries=max(s.max_retries, 3),
                 http_client=http_client,
             )
         if provider is Provider.GITHUB:
             return OpenAI(
                 base_url=GITHUB_MODELS_BASE_URL,
                 api_key=s.github_token,
-                max_retries=max(s.max_retries, 6),
+                max_retries=max(s.max_retries, 3),
                 http_client=http_client,
             )
         if provider is Provider.GROQ:
             return OpenAI(
                 base_url=GROQ_BASE_URL,
                 api_key=s.groq_api_key,
-                max_retries=max(s.max_retries, 6),
+                max_retries=max(s.max_retries, 3),
                 http_client=http_client,
             )
         raise ValueError(f"unknown provider: {provider}")
@@ -163,7 +163,7 @@ class LLMClient:
             except (OpenAIError, ValueError) as exc:
                 last_error = exc
                 logger.warning("provider %s failed for chat_structured: %s", provider.value, exc)
-        raise LLMError("all providers failed for chat_structured") from last_error
+        raise LLMError(f"all providers failed for chat_structured ({last_error})") from last_error
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         """Return one embedding vector per input text (empty input -> empty list)."""
@@ -179,7 +179,7 @@ class LLMClient:
             except (OpenAIError, ValueError) as exc:
                 last_error = exc
                 logger.warning("provider %s failed for embed: %s", provider.value, exc)
-        raise LLMError("all providers failed for embed") from last_error
+        raise LLMError(f"all providers failed for embed ({last_error})") from last_error
 
     # -- internals ----------------------------------------------------------
     @staticmethod
