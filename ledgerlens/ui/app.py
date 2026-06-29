@@ -3,13 +3,22 @@
 Ask a question over financial evidence and see the LLM-proposed program, the
 deterministic computation, the cited operands, and the gate verdict.
 
-Local:           streamlit run ledgerlens/ui/app.py   (reads .env)
+Local:            streamlit run ledgerlens/ui/app.py   (reads .env)
 Streamlit Cloud: set LEDGERLENS_* secrets in the dashboard (bridged to env below).
 """
 
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
+
+# --- FIX: Tell Python to look at the root repository folder ---
+# This resolves the ModuleNotFoundError on Streamlit Cloud
+root_path = Path(__file__).parent.parent.parent
+if str(root_path) not in sys.path:
+    sys.path.append(str(root_path))
+# --------------------------------------------------------------
 
 import streamlit as st
 
