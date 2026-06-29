@@ -159,33 +159,40 @@ architecture.
 
 Reproduce: `python -m ledgerlens.evaluation.abstention data/finqa/dev.json 100`
 
-## P6 — Agentic research analyst
+## P6 — Agentic research analyst (iterative, self-correcting, multi-tool, multi-company)
 
-A hand-rolled **plan → act → observe → revise → synthesize** loop (no framework) that
-orchestrates LedgerLens across a multi-step task. The agent's *only* source of numbers is the
-gated calculator (retrieve → propose program → execute → verify), so **it cannot fabricate a
-figure** — an unanswerable sub-question abstains instead of inventing one, and a failed
-retrieval triggers a wider-search retry (a telemetry-tracked `recovery`).
+A hand-rolled **plan → act → observe → revise** ReAct loop (no framework). At each step the
+LLM picks ONE tool and observes the result before deciding the next move:
 
-Live run on Apple's FY2025 10-K (Azure `gpt-4.1-mini`), task: *"year-over-year change in total
-net sales for the two most recent fiscal years, and is growth accelerating or slowing?"*
+- **`xbrl_value`** — one exact figure from the company's filed XBRL data (ground truth;
+  canonical-concept resolution; latest fiscal year by default).
+- **`compute`** — deterministic arithmetic (via the P1 executor) over figures the agent has
+  *already verified* — every input must trace to a prior lookup, so the agent **cannot slip in
+  a fabricated number.**
+- **`passage`** — a short text snippet for a qualitative fact.
+
+It is iterative (each step chosen from the running state), **self-correcting** (it sees a
+failed step and reformulates — switch tool, change keyword/year; a loop-guard blocks repeats),
+and **multi-company** (a registry resolves tickers → CIK → filing on demand).
+
+Live run (Azure `gpt-4.1-mini`), task: *"Compare Apple (AAPL) and Microsoft (MSFT) on most
+recent year-over-year revenue growth — which grew faster?"*
 
 | telemetry | value |
 |-----------|------:|
-| sub-questions planned | 3 |
-| tool calls | 3 |
-| answered (grounded) | 3 |
-| abstained | 0 |
-| grounded rate | 100% |
+| tool calls | 6 |
+| verified (ok) | 6 |
+| failed | 0 |
+| success rate | 100% |
 
-Result: 2024→2025 **+6.43%**, 2023→2024 **+2.02%**, trend **accelerating** — each figure
-computed by the deterministic executor and cited to the income-statement row
-(`Total net sales $ 416,161 … $ 391,035 … $ 383,285`). The synthesis uses only those verified
-figures.
+It looked up each company's revenue for two years from XBRL (AAPL FY25 $416.2B / FY24 $394.3B;
+MSFT FY25 $281.7B / FY24 $245.1B), computed each growth via the executor (**Apple 5.5%,
+Microsoft 14.9%**), and concluded **"Microsoft grew faster"** — every figure ground-truth,
+every computation deterministic.
 
 This is the project's headline: **an agent whose every number is verified — grounded, cited,
 and computed deterministically — not asserted.**
 
-Reproduce: `ledgerlens/agent/` — `ResearchAgent` driving a `VerifiedCalculator` over a filing.
+Reproduce: `ledgerlens/agent/` — `ResearchAgent` over `make_dispatch(WorkspaceRegistry(...))`.
 
 
