@@ -159,4 +159,33 @@ architecture.
 
 Reproduce: `python -m ledgerlens.evaluation.abstention data/finqa/dev.json 100`
 
+## P6 — Agentic research analyst
+
+A hand-rolled **plan → act → observe → revise → synthesize** loop (no framework) that
+orchestrates LedgerLens across a multi-step task. The agent's *only* source of numbers is the
+gated calculator (retrieve → propose program → execute → verify), so **it cannot fabricate a
+figure** — an unanswerable sub-question abstains instead of inventing one, and a failed
+retrieval triggers a wider-search retry (a telemetry-tracked `recovery`).
+
+Live run on Apple's FY2025 10-K (Azure `gpt-4.1-mini`), task: *"year-over-year change in total
+net sales for the two most recent fiscal years, and is growth accelerating or slowing?"*
+
+| telemetry | value |
+|-----------|------:|
+| sub-questions planned | 3 |
+| tool calls | 3 |
+| answered (grounded) | 3 |
+| abstained | 0 |
+| grounded rate | 100% |
+
+Result: 2024→2025 **+6.43%**, 2023→2024 **+2.02%**, trend **accelerating** — each figure
+computed by the deterministic executor and cited to the income-statement row
+(`Total net sales $ 416,161 … $ 391,035 … $ 383,285`). The synthesis uses only those verified
+figures.
+
+This is the project's headline: **an agent whose every number is verified — grounded, cited,
+and computed deterministically — not asserted.**
+
+Reproduce: `ledgerlens/agent/` — `ResearchAgent` driving a `VerifiedCalculator` over a filing.
+
 

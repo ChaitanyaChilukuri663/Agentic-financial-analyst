@@ -48,7 +48,7 @@ PHASE 2 AGENT: plan → act → observe → revise → terminate, calling Ledger
 | **P3** | EDGAR HTML/iXBRL ingestion ✅ + table-aware hybrid retriever ✅ — hybrid (BM25+dense, RRF) beats either alone on FinQA (**recall@5 85.6% / hit@5 94%**); real-filing/FinanceBench eval next | ✅ done |
 | **P4** | Validation/abstention gates ✅ (grounding/validity/sanity → precision 60→64.5%, **0% false-abstain**) + error taxonomy ✅ (reasoning, not arithmetic, is the bottleneck); RAG-vs-one-shot baseline next | 🟡 gates done |
 | **P5** | Streamlit + FastAPI demo ✅ (question → program + computed steps + citations + gate verdict) + [DEPLOY.md](DEPLOY.md); free-host deploy is a 1-click on Streamlit Cloud | 🟡 built |
-| **P6** | Phase 2 agent loop wrapping LedgerLens as a verified tool + agent telemetry eval | ☐ |
+| **P6** | Agentic research analyst ✅ — hand-rolled plan→act→observe→revise→synthesize over LedgerLens as a verified tool; **live on a real 10-K, 100% tool-grounded figures** ([results](evals/results.md)) | ✅ done |
 
 ## Tech stack
 
