@@ -16,6 +16,7 @@ env/
 .env
 .env.local
 *.key
+.streamlit/secrets.toml
 
 # Data & artifacts (datasets, clones, caches, indexes) — keep only the README
 data/*
