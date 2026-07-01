@@ -68,12 +68,13 @@ def _resolve_concepts(keyword: str) -> tuple[str, ...]:
 def tool_xbrl_value(
     workspace: FilingWorkspace, keyword: str, fiscal_year: int | None
 ) -> ToolResult:
+    # Pool facts across ALL alias concepts, not just the first that matches: a company may
+    # report a metric under different us-gaap concepts across years (e.g. NVDA's recent revenue
+    # is under `Revenues` while older years sit under the ASC-606 concept). Pooling lets the
+    # latest-year + max-abs selection below pick the truly most recent figure.
     candidates: list = []
     for concept in _resolve_concepts(keyword):
-        matched = [f for f in workspace.facts if f.concept == concept]
-        if matched:
-            candidates = matched
-            break
+        candidates.extend(f for f in workspace.facts if f.concept == concept)
     if not candidates:  # fallback: substring match on the concept name
         kw = keyword.lower().strip()
         candidates = [f for f in workspace.facts if kw in f.concept.lower()]

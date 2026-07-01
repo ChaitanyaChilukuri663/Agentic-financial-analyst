@@ -8,8 +8,11 @@ from typing import Any
 
 from ledgerlens.agent.agent import ResearchAgent
 from ledgerlens.agent.schema import AgentAction
-from ledgerlens.agent.tools import ToolResult, tool_compute
-from ledgerlens.agent.workspace import load_workspace_bundle
+from ledgerlens.agent.tools import ToolResult, tool_compute, tool_xbrl_value
+from ledgerlens.agent.workspace import FilingWorkspace, load_workspace_bundle
+from ledgerlens.ingest.xbrl import XbrlFact
+from ledgerlens.retrieval.bm25 import Bm25Index
+from ledgerlens.retrieval.chunk import Chunk
 
 
 class _ScriptedClient:
@@ -80,6 +83,45 @@ def test_compute_uses_executor_and_grounds_to_prior_figures() -> None:
 
     fabricated = tool_compute("percent_change", [143015000000, 999000000000], ledger)
     assert not fabricated.ok  # 999B was never returned by a tool
+
+
+def _fact(concept: str, year: int, value: str) -> XbrlFact:
+    return XbrlFact(
+        taxonomy="us-gaap",
+        concept=concept,
+        unit="USD",
+        value=Decimal(value),
+        period_end=f"{year}-12-31",
+        fiscal_year=year,
+        fiscal_period="FY",
+        form="10-K",
+    )
+
+
+def test_xbrl_value_pools_alias_concepts_for_latest_year() -> None:
+    # A company can report revenue under different us-gaap concepts across years (NVDA does):
+    # the ASC-606 concept stops at 2022 while `Revenues` carries the newer figures. The lookup
+    # must return the truly latest value, not the latest of whichever concept it checks first.
+    facts = [
+        _fact("RevenueFromContractWithCustomerExcludingAssessedTax", 2021, "16675"),
+        _fact("RevenueFromContractWithCustomerExcludingAssessedTax", 2022, "26914"),
+        _fact("Revenues", 2024, "60922"),
+        _fact("Revenues", 2026, "215938"),
+    ]
+    ws = FilingWorkspace(
+        ticker="NVDA",
+        cik="1045810",
+        title="NVIDIA CORP",
+        filing_url="https://example.com",
+        bm25=Bm25Index([Chunk(chunk_id="c0", text="placeholder", kind="text")]),
+        facts=facts,
+    )
+    latest = tool_xbrl_value(ws, "revenue", None)
+    assert latest.ok
+    assert latest.output == "215938"  # Revenues FY2026, not the stale ASC-606 FY2022
+    specific = tool_xbrl_value(ws, "revenue", 2022)
+    assert specific.ok
+    assert specific.output == "26914"  # per-year lookups still resolve the right concept
 
 
 def test_committed_demo_bundle_loads() -> None:
