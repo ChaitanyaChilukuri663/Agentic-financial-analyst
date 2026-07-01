@@ -84,3 +84,24 @@ def test_xbrl_facts_parse_and_match() -> None:
     assert len(matches) == 1
     assert matches[0].fiscal_year == 2023
     assert matches[0].concept == "Revenues"
+
+
+def test_fiscal_year_comes_from_period_end_not_filing_fy() -> None:
+    # A later 10-K re-reports an earlier year as a comparative, tagged with the FILING's fy.
+    # The fact must be dated by its period-end year (2022), not the filing's fy (2024) — else
+    # every comparative year in one filing collapses to the same year.
+    payload = {
+        "facts": {
+            "us-gaap": {
+                "Revenues": {
+                    "units": {
+                        "USD": [
+                            {"end": "2022-09-24", "val": 394328000000, "fy": 2024, "form": "10-K"},
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    facts = parse_company_facts(payload)
+    assert facts[0].fiscal_year == 2022  # from the period end, not fy=2024

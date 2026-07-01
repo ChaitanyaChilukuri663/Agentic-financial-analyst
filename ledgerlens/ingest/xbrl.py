@@ -44,12 +44,26 @@ def parse_company_facts(payload: dict) -> list[XbrlFact]:
                             unit=unit,
                             value=value,
                             period_end=entry.get("end", ""),
-                            fiscal_year=entry.get("fy"),
+                            fiscal_year=_fiscal_year(entry),
                             fiscal_period=entry.get("fp", ""),
                             form=entry.get("form", ""),
                         )
                     )
     return facts
+
+
+def _fiscal_year(entry: dict) -> int | None:
+    """The fiscal year a value *pertains to* = the year of its period-end date.
+
+    SEC's own ``fy`` is the fiscal year of the *filing* that reported the fact, so every
+    comparative year inside one 10-K shares a single ``fy`` (e.g. the FY2024 10-K tags its
+    FY2024/FY2023/FY2022 revenues all as fy=2024). Deriving the year from the period-end date
+    dates each value correctly. Falls back to ``fy`` when no usable end date is present.
+    """
+    end = entry.get("end", "")
+    if len(end) >= 4 and end[:4].isdigit():
+        return int(end[:4])
+    return entry.get("fy")
 
 
 def match_value(
