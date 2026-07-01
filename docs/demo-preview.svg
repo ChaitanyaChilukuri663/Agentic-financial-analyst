@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="470" viewBox="0 0 840 470" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="840" height="470" rx="14" fill="#0f172a"/>
+  <rect x="1" y="1" width="838" height="468" rx="13" fill="none" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- header -->
+  <text x="28" y="44" fill="#e2e8f0" font-size="20" font-weight="700">🔎 Agentic Financial Analyst — Try it</text>
+  <text x="28" y="68" fill="#64748b" font-size="13">Illustration of the live flow. The LLM proposes a plan; a calculator does the math; every figure is verified.</text>
+
+  <!-- question -->
+  <rect x="28" y="86" width="784" height="42" rx="8" fill="#111c34" stroke="#334155"/>
+  <text x="44" y="112" fill="#cbd5e1" font-size="15">Q:  How fast did Apple's (AAPL) revenue grow in its most recent fiscal year?</text>
+
+  <!-- steps -->
+  <rect x="28" y="142" width="784" height="150" rx="8" fill="#0b1220" stroke="#233149"/>
+  <text x="44" y="170" fill="#22c55e" font-size="14">✅ 📄 xbrl_value · AAPL:revenue</text>
+  <text x="70" y="190" fill="#94a3b8" font-size="13" font-family="Consolas, monospace">416,161,000,000  [Revenue … FY2025 (USD)]</text>
+
+  <text x="44" y="218" fill="#22c55e" font-size="14">✅ 📄 xbrl_value · AAPL:revenue</text>
+  <text x="70" y="238" fill="#94a3b8" font-size="13" font-family="Consolas, monospace">391,035,000,000  [Revenue … FY2024 (USD)]</text>
+
+  <text x="44" y="266" fill="#22c55e" font-size="14">✅ 🧮 compute · percent_change(391035000000, 416161000000)</text>
+  <text x="70" y="286" fill="#94a3b8" font-size="13" font-family="Consolas, monospace">0.06426   →   +6.43%</text>
+
+  <!-- answer -->
+  <rect x="28" y="306" width="784" height="80" rx="8" fill="#052e1a" stroke="#15803d"/>
+  <text x="44" y="336" fill="#dcfce7" font-size="15" font-weight="700">Apple's revenue grew from $391.0B (FY2024) to $416.2B (FY2025)</text>
+  <text x="44" y="360" fill="#dcfce7" font-size="15" font-weight="700">— a growth rate of ~6.43%.</text>
+  <text x="44" y="378" fill="#86efac" font-size="12">Verdict: positive</text>
+
+  <!-- footer telemetry -->
+  <text x="28" y="416" fill="#64748b" font-size="13">✨ 3 tool calls · 3 verified · 0 self-corrections — every number traced to the filing.</text>
+  <rect x="28" y="430" width="784" height="26" rx="6" fill="#111c34" stroke="#334155"/>
+  <text x="44" y="448" fill="#818cf8" font-size="12">🛑 Ask for a figure that isn't in the data (e.g. "Apple's inventory") and it abstains instead of guessing.</text>
+</svg>

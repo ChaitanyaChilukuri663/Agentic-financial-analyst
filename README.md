@@ -6,6 +6,11 @@
 number is pulled from the filing, computed by a calculator (not the AI), cited to its source,
 and verified. If it can't verify a figure, it says so instead of guessing.**
 
+![Demo preview](docs/demo-preview.svg)
+
+<!-- To use a real recording instead: capture a GIF of the "Try it" tab, save it as
+docs/demo.gif, and change the line above to: ![Demo](docs/demo.gif) -->
+
 ---
 
 ## The problem
@@ -54,7 +59,7 @@ Every claim is backed by a real evaluation ([full details](evals/results.md)):
 | **Real-filing ingestion** | parses a live 10-K → 23 sections, 53 tables (49 unit-aware), 24,852 XBRL facts |
 | **Hybrid retrieval** | recall@5 **85.6%** / hit@5 **94%** — beats BM25-only and dense-only |
 | **Abstention gates** | lift answer precision **60% → 64.5%** with **0% false-abstentions** |
-| **Agent (live)** | *"Apple vs Microsoft revenue growth?"* → 5.5% vs 14.9%, "Microsoft grew faster" — 100% tool-grounded |
+| **Agent benchmark** | 23 labelled questions: **19/19** answer accuracy, **4/4** abstention, **100% faithful** — every number in every answer traces to a verified figure ([details](evals/agent_results.md)) |
 
 ## Demo
 
@@ -66,9 +71,21 @@ streamlit run ledgerlens/ui/app.py          # ask about real companies
 uvicorn ledgerlens.api.app:app --reload     # JSON API at /docs
 ```
 
-The UI lets you ask about real companies (Apple, Microsoft, NVIDIA…); it fetches their actual
-filings from SEC EDGAR and shows each verified figure, its source, and the computation. See
-[DEPLOY.md](DEPLOY.md) for free hosting (Streamlit Community Cloud / Hugging Face Spaces).
+The UI streams each step live (look up → compute → verify) and plots a revenue trend for the
+companies you ask about. The hosted demo covers **AAPL, MSFT, NVDA, GOOGL, AMZN, META** from
+committed real-filing bundles (SEC blocks cloud IPs, so bundling keeps the demo reliable); a
+local run fetches any ticker live from SEC EDGAR. See [DEPLOY.md](DEPLOY.md) for free hosting.
+
+**Try these:**
+
+- *How fast did Apple's (AAPL) revenue grow in its most recent fiscal year?* → +6.4%
+- *Which grew revenue faster last year, NVIDIA (NVDA) or Microsoft (MSFT)?* → NVIDIA (65% vs 15%)
+- *What was Amazon's (AMZN) net income last year?* → a cited figure straight from XBRL
+- *What was Apple's (AAPL) inventory last year?* → **it abstains** — that figure isn't in the
+  demo data, and the system declines rather than guess.
+
+> **Design notes:** the *why* behind each decision (program-of-thoughts, no LangChain, abstain
+> on trustworthy signals, discover-the-latest-year) is in **[docs/DESIGN.md](docs/DESIGN.md)**.
 
 ## Tech
 
@@ -81,7 +98,7 @@ pytest + GitHub Actions CI.
 ```bash
 pip install -e ".[dev]"
 ruff check .        # lint
-pytest              # 71 tests, fully offline (LLM mocked — no keys needed)
+pytest              # 75 tests, fully offline (LLM mocked — no keys needed)
 ```
 
 ## Datasets & attribution
