@@ -1,9 +1,10 @@
 """Streamlit demo for the Agentic Financial Analyst.
 
-Four tabs, framed for non-technical visitors (recruiters, HR):
-  Overview      — the problem, the flagship features, headline metrics.
-  Try it        — ask the agent about real companies (with LLM-suggested questions).
-  Results       — the evaluation numbers as charts.
+Five tabs, framed for non-technical visitors (recruiters, HR):
+  Overview       — plain-English: what it is, why it beats a chatbot, why it was built.
+  Try it         — ask the agent about real companies; see the proof behind every number.
+  vs ChatGPT     — the same question through a plain chatbot vs this system, side by side.
+  Results        — the evaluation numbers as charts.
   How it's built — the architecture diagram + the stack.
 
 Local:           streamlit run ledgerlens/ui/app.py   (reads .env)
@@ -42,16 +43,32 @@ _UA = os.environ.get(
     "LEDGERLENS_SEC_USER_AGENT", "Agentic Financial Analyst demo (contact@example.com)"
 )
 _REPO = "https://github.com/ChaitanyaChilukuri663/Agentic-financial-analyst"
+
+# Short labels keep the example buttons readable for non-technical visitors.
 _EXAMPLES = [
-    "How fast did Apple's (AAPL) revenue grow in its most recent fiscal year?",
-    "Compare NVIDIA (NVDA) and Microsoft (MSFT) on revenue growth — which grew faster?",
-    "What was Amazon's (AMZN) net income in its most recent fiscal year?",
-    "What was Apple's (AAPL) inventory last year?",  # not in the demo data → watch it abstain
+    ("📈 Revenue growth",
+     "How fast did Apple's (AAPL) revenue grow in its most recent fiscal year?"),
+    ("🆚 Compare two",
+     "Compare NVIDIA (NVDA) and Microsoft (MSFT) on revenue growth — which grew faster?"),
+    ("🧮 Profit margin",
+     "What was Apple's (AAPL) net profit margin in its most recent fiscal year?"),
+    ("💰 Net income", "What was Amazon's (AMZN) net income in its most recent fiscal year?"),
+    ("🛑 Watch it abstain", "What was Apple's (AAPL) inventory last year?"),
+]
+# vs-ChatGPT defaults focus on where a memory-only model visibly fails: recency + hard math.
+_VS_EXAMPLES = [
+    ("NVIDIA growth", "How fast did NVIDIA's (NVDA) revenue grow in its most recent fiscal year?"),
+    ("Amazon revenue", "What was Amazon's (AMZN) revenue in its most recent fiscal year?"),
+    ("Apple margin", "What was Apple's (AAPL) net profit margin in its most recent fiscal year?"),
 ]
 _SUGGEST_PROMPT = (
     "Suggest 3 short, specific questions an analyst could ask about a large public company's "
     "most recent annual financials (e.g. revenue growth, margin, net income), using real "
     "tickers like AAPL, MSFT, NVDA, GOOGL, AMZN, or META."
+)
+_RAW_SYSTEM = (
+    "You are a helpful assistant. Answer the finance question concisely, including the specific "
+    "number. You have no tools and no documents — answer from your own knowledge."
 )
 
 # Companies with committed demo bundles (hosted app answers these with no live SEC calls).
@@ -62,6 +79,33 @@ _REVENUE_CONCEPTS = {
     "Revenues",
     "SalesRevenueNet",
 }
+
+
+class _Suggestions(BaseModel):
+    """A few suggested questions for the demo."""
+
+    questions: list[str] = Field(
+        description="3 short, specific questions about a company's financials."
+    )
+
+
+class _RawAnswer(BaseModel):
+    """A plain, memory-only answer from the raw model (the ChatGPT-style baseline)."""
+
+    answer: str = Field(description="A concise answer including the specific number.")
+
+
+@st.cache_resource
+def _registry() -> WorkspaceRegistry:
+    return WorkspaceRegistry(EdgarClient(_UA))
+
+
+def _set_question(value: str) -> None:
+    st.session_state.question = value
+
+
+def _set_vs_question(value: str) -> None:
+    st.session_state.vs_question = value
 
 
 def _revenue_history(workspace: object) -> dict[int, float]:
@@ -75,68 +119,181 @@ def _revenue_history(workspace: object) -> dict[int, float]:
     return dict(sorted(by_year.items()))
 
 
-class _Suggestions(BaseModel):
-    """A few suggested questions for the demo."""
+def _fmt_observation(observation: str) -> tuple[str, str]:
+    """Split a tool observation ('416161000000 [Revenues FY2025 (USD)]') into (value, source)."""
+    head, _, tail = observation.partition(" ")
+    source = tail.strip().strip("[]")
+    try:
+        value = float(head.replace(",", ""))
+    except ValueError:
+        return head, source
+    if abs(value) >= 1e9:
+        shown = f"${value / 1e9:.2f}B"
+    elif abs(value) < 1:
+        shown = f"{value * 100:.2f}%"
+    else:
+        shown = head
+    return shown, source
 
-    questions: list[str] = Field(
-        description="3 short, specific questions about a company's financials."
+
+def _raw_ai_answer(task: str) -> str:
+    """The ChatGPT-style baseline: one plain model call, from memory, no tools or filing."""
+    messages = [{"role": "system", "content": _RAW_SYSTEM}, {"role": "user", "content": task}]
+    return LLMClient().chat_structured(messages, _RawAnswer).answer
+
+
+def _revenue_chart(task: str) -> None:
+    """Show a revenue-by-year line chart for any demo companies named in the question."""
+    mentioned = [t for t in _DEMO_TICKERS if re.search(rf"\b{t}\b", task, re.IGNORECASE)]
+    series: dict[str, dict[int, float]] = {}
+    for ticker in mentioned:
+        workspace = _registry().get(ticker)
+        history = _revenue_history(workspace) if workspace else {}
+        if history:
+            series[ticker] = history
+    if not series:
+        return
+    st.markdown("##### Revenue by fiscal year ($B)")
+    st.line_chart(pd.DataFrame(series).sort_index())
+    st.caption("Context from the same filed figures the agent used — not a separate source.")
+
+
+def _trust_panel(task: str, report: object) -> None:
+    """Make trust tangible: link the real SEC filings and list every verified figure used."""
+    with st.expander("🔎 Show the proof — sources & verified figures", expanded=True):
+        mentioned = [t for t in _DEMO_TICKERS if re.search(rf"\b{t}\b", task, re.IGNORECASE)]
+        links = []
+        for ticker in mentioned:
+            workspace = _registry().get(ticker)
+            url = getattr(workspace, "filing_url", "") if workspace else ""
+            if url:
+                links.append(f"[{ticker} 10-K on SEC EDGAR]({url})")
+        if links:
+            st.markdown("**Source filing(s):** " + " · ".join(links))
+        rows = []
+        for step in getattr(report, "steps", []):
+            if step.ok and step.tool in ("xbrl_value", "compute"):
+                shown, source = _fmt_observation(step.observation)
+                suffix = f"  ·  _{source}_" if source else ""
+                rows.append(f"- **{step.target}** → `{shown}`{suffix}")
+        if rows:
+            st.markdown("**Every number used (each from the filing, computed by code):**")
+            st.markdown("\n".join(rows))
+        st.caption(
+            "This is the difference from a chatbot: you can click through to the exact filing and "
+            "see that no number was invented."
+        )
+
+
+def _run_and_render(task: str) -> None:
+    """Run the agent with live step streaming, then render the answer, chart, and proof."""
+    status = st.status(
+        "🔎 Researching — reading filings, looking up figures, computing…", expanded=True
     )
+    emojis = {"xbrl_value": "📄", "compute": "🧮", "passage": "📝"}
 
+    def _on_step(step: object) -> None:
+        mark = "✅" if step.ok else "⚠️"
+        status.markdown(f"{mark} {emojis.get(step.tool, '•')} **{step.tool}** · {step.target}")
+        status.caption(step.observation[:140])
 
-@st.cache_resource
-def _registry() -> WorkspaceRegistry:
-    return WorkspaceRegistry(EdgarClient(_UA))
+    try:
+        agent = ResearchAgent(LLMClient(), make_dispatch(_registry()), max_steps=10)
+        report = agent.run(task, on_step=_on_step)
+    except Exception as exc:  # noqa: BLE001 - surface provider/network errors to the user
+        status.update(label="⚠️ Couldn't finish", state="error")
+        st.error(f"Something went wrong: {exc}")
+        return
 
-
-def _set_question(value: str) -> None:
-    st.session_state.question = value
+    if report.trend == "abstained":
+        status.update(label="🛑 Abstained", state="complete")
+        st.info(f"**{report.summary}**\n\nThis is by design — it won't invent a figure.")
+    else:
+        status.update(label="✅ Done", state="complete")
+        st.balloons()
+        st.success(f"### {report.summary}")
+        if report.trend and report.trend.lower() != "n/a":
+            st.caption(f"Verdict: **{report.trend}**")
+    tel = report.telemetry
+    st.caption(
+        f"✨ {tel.tool_calls} tool calls · {tel.succeeded} verified · "
+        f"{tel.corrections} self-correction(s)"
+    )
+    if report.trend != "abstained":
+        _trust_panel(task, report)
+    _revenue_chart(task)
 
 
 def _overview() -> None:
-    st.subheader("Answers from financial filings you can actually trust.")
+    st.subheader("AI that gives you financial numbers you can actually trust.")
     st.markdown(
-        "The language model **never produces a number** — it proposes a *plan*, and a "
-        "deterministic engine does the math. Every figure is pulled from the filing, cited, and "
-        "verified — or the system abstains."
+        "Ask about a company's financials and get a straight answer where **every number is pulled "
+        "from the company's official SEC filing, calculated by code (not guessed by the AI), and "
+        "shown with its source.** If it can't verify something, it says so instead of making it up."
     )
+
+    st.markdown("#### But can't ChatGPT already do this?")
+    st.markdown(
+        "Not reliably. A general chatbot answers from *memory* — it will confidently hand you a "
+        "number that's **out of date or simply invented**, with no way to check it. For a "
+        "company's financials, a wrong number isn't a small slip — it can mean a bad investment "
+        "or a compliance problem. The difference:"
+    )
+    st.markdown(
+        "| | 🤖 Plain chatbot (ChatGPT / Gemini) | ✅ This system |\n"
+        "|---|---|---|\n"
+        "| Where the number comes from | its memory — may be stale or invented | the company's "
+        "**actual filing**, read live |\n"
+        "| Shows its source? | No | **Yes — links the filing + exact line** |\n"
+        "| Does the math | itself (often wrong on multi-step) | a **calculator** |\n"
+        "| When it doesn't know | makes something up | **says so and stops** |"
+    )
+    st.caption("👉 See this head-to-head on real questions in the **🆚 vs ChatGPT** tab.")
+
+    st.divider()
+    st.markdown("#### A simple way to picture it")
+    st.markdown(
+        "> A regular chatbot is like a **confident intern** who answers instantly but sometimes "
+        "makes the numbers up.\n>\n> This is like a **careful analyst** who looks up each figure "
+        "in the annual report, does the math on a calculator, and hands you the answer **with "
+        "the page it came from** — or admits when they don't have it."
+    )
+
+    st.divider()
+    st.markdown("#### Why I built it")
+    st.markdown(
+        "AI assistants are everywhere, but in high-stakes fields like finance, *sounding right* "
+        "isn't good enough — you have to be **provably right**. I built this to work through how "
+        "you actually make an AI's numbers trustworthy: separate the reasoning from the "
+        "arithmetic, "
+        "ground every figure in the real document, verify it, and stay honest about the limits. "
+        "The result is a pattern that transfers anywhere answers must be **computed and cited, not "
+        "guessed** — audit, compliance, healthcare, law."
+    )
+
+    st.divider()
+    st.markdown("#### Proven, not just claimed")
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Executor accuracy", "99.5%", "8,281 expert programs")
-    m2.metric("Retrieval recall@5", "85.6%", "hybrid beats BM25/dense")
-    m3.metric("False-abstentions", "0%", "gates buy precision")
-    m4.metric("Data", "Real 10-Ks", "live from SEC EDGAR")
-
-    st.divider()
-    st.markdown("#### Why not just paste the filing into ChatGPT?")
-    c1, c2, c3 = st.columns(3)
-    c1.error("**Too big** — a 10-K doesn't fit the context window.")
-    c2.error("**Made-up numbers** — it hallucinates figures.")
-    c3.error("**Bad arithmetic** — it miscalculates.")
-
-    st.divider()
-    st.markdown("#### Flagship features")
-    f1, f2 = st.columns(2)
-    f1.markdown(
-        "**🧮 No hallucinated math**\n\nThe LLM emits a program like "
-        "`subtract(5829, 5735), divide(#0, 5735)`; a calculator runs it."
+    m1.metric("Calculator accuracy", "99.5%", "8,281 expert problems")
+    m2.metric("Answers traced to a source", "100%", "on the agent test set")
+    m3.metric("Made-up numbers", "0", "by design")
+    m4.metric("Companies in live demo", str(len(_DEMO_TICKERS) or 6), "real-filing data")
+    st.info(
+        "Ask a question in **🔎 Try it**, see the head-to-head in **🆚 vs ChatGPT**, the evidence "
+        "in **📈 Results**, or the engineering in **🛠 How it's built**."
     )
-    f1.markdown("**🔗 Every number cited**\n\nEach figure traces to the filing or filed XBRL data.")
-    f2.markdown("**🛑 Knows when to abstain**\n\nIf a figure can't be verified, it refuses.")
-    f2.markdown(
-        "**🤖 Agentic**\n\nA self-correcting agent that works across companies — every figure "
-        "still verified."
-    )
-    st.info("Open **🔎 Try it** to ask about real companies, or **📈 Results** for the numbers.")
 
 
 def _try_it() -> None:
-    st.markdown("Ask about real public companies — the agent fetches their actual SEC filings.")
-    st.session_state.setdefault("question", _EXAMPLES[0])
+    st.markdown(
+        "Ask about a real company. Watch it look up each figure in the filing, compute with a "
+        "calculator, and show you the source — or decline if it can't verify."
+    )
+    st.session_state.setdefault("question", _EXAMPLES[0][1])
 
     cols = st.columns(len(_EXAMPLES))
-    for i, example in enumerate(_EXAMPLES):
-        cols[i].button(
-            f"Example {i + 1}", key=f"ex{i}", help=example, on_click=_set_question, args=(example,)
-        )
+    for i, (label, example) in enumerate(_EXAMPLES):
+        cols[i].button(label, key=f"ex{i}", help=example, on_click=_set_question, args=(example,))
 
     if st.button("💡 Suggest questions"):
         with st.spinner("Thinking of good questions…"):
@@ -158,55 +315,61 @@ def _try_it() -> None:
     )
 
     if st.button("Research it ✨", type="primary"):
-        status = st.status(
-            "🔎 Researching — reading filings, looking up figures, computing…", expanded=True
+        _run_and_render(task)
+
+
+def _vs_chatgpt() -> None:
+    st.markdown(
+        "The **same question**, two ways: a plain chatbot answering from memory, vs this system "
+        "reading the real filing. Watch what changes — especially the source and the latest-year "
+        "numbers."
+    )
+    st.session_state.setdefault("vs_question", _VS_EXAMPLES[0][1])
+    cols = st.columns(len(_VS_EXAMPLES))
+    for i, (label, example) in enumerate(_VS_EXAMPLES):
+        cols[i].button(
+            label, key=f"vs{i}", help=example, on_click=_set_vs_question, args=(example,)
         )
-        emojis = {"xbrl_value": "📄", "compute": "🧮", "passage": "📝"}
+    task = st.text_area("Question", key="vs_question", height=70)
 
-        def _on_step(step: object) -> None:
-            mark = "✅" if step.ok else "⚠️"
-            status.markdown(f"{mark} {emojis.get(step.tool, '•')} **{step.tool}** · {step.target}")
-            status.caption(step.observation[:140])
-
-        try:
-            agent = ResearchAgent(LLMClient(), make_dispatch(_registry()), max_steps=8)
-            report = agent.run(task, on_step=_on_step)
-        except Exception as exc:  # noqa: BLE001 - surface provider/network errors to the user
-            status.update(label="⚠️ Couldn't finish", state="error")
-            st.error(f"Something went wrong: {exc}")
-            st.stop()
-
-        if report.trend == "abstained":
-            status.update(label="🛑 Abstained", state="complete")
-            st.info(f"**{report.summary}**\n\nThis is by design — it won't invent a figure.")
-        else:
-            status.update(label="✅ Done", state="complete")
-            st.balloons()
-            st.success(f"### {report.summary}")
-            if report.trend and report.trend.lower() != "n/a":
-                st.caption(f"Verdict: **{report.trend}**")
-        tel = report.telemetry
-        st.caption(
-            f"✨ {tel.tool_calls} tool calls · {tel.succeeded} verified · "
-            f"{tel.corrections} self-correction(s)"
+    if st.button("Compare ⚔️", type="primary"):
+        left, right = st.columns(2)
+        with left:
+            st.markdown("#### 🤖 Plain chatbot")
+            st.caption("A language model answering from memory — like ChatGPT. No filing/tools.")
+            with st.spinner("Thinking…"):
+                try:
+                    st.write(_raw_ai_answer(task))
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"failed: {exc}")
+            st.warning(
+                "⚠️ **No source.** Answered from training memory — may be **outdated or made up**, "
+                "and there's no way to check it."
+            )
+        with right:
+            st.markdown("#### ✅ This system")
+            st.caption("Reads the actual 10-K, computes with a calculator, cites every number.")
+            report = None
+            with st.spinner("Reading the filing…"):
+                try:
+                    report = ResearchAgent(
+                        LLMClient(), make_dispatch(_registry()), max_steps=10
+                    ).run(task)
+                except Exception as exc:  # noqa: BLE001
+                    st.error(f"failed: {exc}")
+            if report is not None:
+                if report.trend == "abstained":
+                    st.info(f"**{report.summary}**")
+                else:
+                    st.success(report.summary)
+                st.caption(f"✨ {report.telemetry.succeeded} figures verified from the filing")
+        if report is not None and report.trend != "abstained":
+            _trust_panel(task, report)
+        st.info(
+            "**The takeaway:** the chatbot's number comes from memory with no proof — it can be "
+            "stale or invented. This system's number is pulled from the company's official filing, "
+            "computed by code, and shown with its source. Same speed; only one is *verifiable*."
         )
-        _revenue_chart(task)
-
-
-def _revenue_chart(task: str) -> None:
-    """Show a revenue-by-year line chart for any demo companies named in the question."""
-    mentioned = [t for t in _DEMO_TICKERS if re.search(rf"\b{t}\b", task, re.IGNORECASE)]
-    series: dict[str, dict[int, float]] = {}
-    for ticker in mentioned:
-        workspace = _registry().get(ticker)
-        history = _revenue_history(workspace) if workspace else {}
-        if history:
-            series[ticker] = history
-    if not series:
-        return
-    st.markdown("##### Revenue by fiscal year ($B)")
-    st.line_chart(pd.DataFrame(series).sort_index())
-    st.caption("Context from the same filed figures the agent used — not a separate source.")
 
 
 def _results() -> None:
@@ -229,6 +392,17 @@ def _results() -> None:
     )
     st.bar_chart(retrieval)
     st.caption("FinQA dev, n=150. BM25 anchors exact matches; dense adds recall; RRF fuses both.")
+
+    st.divider()
+    st.markdown("#### The agent, benchmarked")
+    a1, a2, a3 = st.columns(3)
+    a1.metric("Answer accuracy", "19/19", "labelled questions")
+    a2.metric("Faithfulness", "100%", "every number sourced")
+    a3.metric("Abstention", "4/4", "declines when it should")
+    st.caption(
+        "23 labelled questions over the demo companies. *Faithfulness* = every number in every "
+        "answer traced back to a verified figure — the 'can't fabricate' claim, measured."
+    )
 
     st.divider()
     st.markdown("#### Trust gates")
@@ -310,7 +484,7 @@ def _how_built() -> None:
         "- **Retrieval** — row-level chunks of real 10-K tables; BM25 + dense, RRF fusion.\n"
         "- **Gates** — operand-grounding, program-validity, numeric-sanity → answer or abstain.\n"
         "- **Agent** — hand-rolled ReAct loop (no LangChain); self-correcting; multi-company.\n"
-        "- **Stack** — Azure OpenAI, FastAPI + Streamlit, ruff + pytest + CI; 71 tests."
+        "- **Stack** — Azure OpenAI, FastAPI + Streamlit, ruff + pytest + CI; 75 tests."
     )
     st.caption(f"Source: [{_REPO}]({_REPO})")
 
@@ -326,13 +500,15 @@ with st.sidebar:
     st.caption(f"FinQA + live SEC EDGAR · Azure gpt-4.1-mini · [GitHub]({_REPO})")
 
 st.title("📊 Agentic Financial Analyst")
-tab_overview, tab_try, tab_results, tab_built = st.tabs(
-    ["🏠 Overview", "🔎 Try it", "📈 Results", "🛠 How it's built"]
+tab_overview, tab_try, tab_vs, tab_results, tab_built = st.tabs(
+    ["🏠 Overview", "🔎 Try it", "🆚 vs ChatGPT", "📈 Results", "🛠 How it's built"]
 )
 with tab_overview:
     _overview()
 with tab_try:
     _try_it()
+with tab_vs:
+    _vs_chatgpt()
 with tab_results:
     _results()
 with tab_built:
