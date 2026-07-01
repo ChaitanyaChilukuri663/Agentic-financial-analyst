@@ -13,6 +13,7 @@ Streamlit Cloud: set LEDGERLENS_* secrets in the dashboard (bridged to env below
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -43,14 +44,35 @@ _UA = os.environ.get(
 _REPO = "https://github.com/ChaitanyaChilukuri663/Agentic-financial-analyst"
 _EXAMPLES = [
     "How fast did Apple's (AAPL) revenue grow in its most recent fiscal year?",
-    "Compare Apple (AAPL) and Microsoft (MSFT) on revenue growth — which grew faster?",
-    "What was NVIDIA's (NVDA) net income in its most recent fiscal year?",
+    "Compare NVIDIA (NVDA) and Microsoft (MSFT) on revenue growth — which grew faster?",
+    "What was Amazon's (AMZN) net income in its most recent fiscal year?",
+    "What was Apple's (AAPL) inventory last year?",  # not in the demo data → watch it abstain
 ]
 _SUGGEST_PROMPT = (
     "Suggest 3 short, specific questions an analyst could ask about a large public company's "
     "most recent annual financials (e.g. revenue growth, margin, net income), using real "
-    "tickers like AAPL, MSFT, or NVDA."
+    "tickers like AAPL, MSFT, NVDA, GOOGL, AMZN, or META."
 )
+
+# Companies with committed demo bundles (hosted app answers these with no live SEC calls).
+_DEMO_DIR = Path(__file__).resolve().parents[1] / "agent" / "demo_data"
+_DEMO_TICKERS = sorted(p.stem for p in _DEMO_DIR.glob("*.json")) if _DEMO_DIR.exists() else []
+_REVENUE_CONCEPTS = {
+    "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "Revenues",
+    "SalesRevenueNet",
+}
+
+
+def _revenue_history(workspace: object) -> dict[int, float]:
+    """Revenue (in $B) by fiscal year from a workspace's facts — max-abs per year."""
+    by_year: dict[int, float] = {}
+    for fact in getattr(workspace, "facts", []):
+        if fact.concept in _REVENUE_CONCEPTS and fact.fiscal_year:
+            value = abs(float(fact.value)) / 1e9
+            if value > by_year.get(fact.fiscal_year, 0.0):
+                by_year[fact.fiscal_year] = value
+    return dict(sorted(by_year.items()))
 
 
 class _Suggestions(BaseModel):
@@ -129,7 +151,11 @@ def _try_it() -> None:
         st.button(f"💡 {suggestion}", key=f"sug{i}", on_click=_set_question, args=(suggestion,))
 
     task = st.text_area("Question", key="question", height=80)
-    st.caption("Hosted demo covers **Apple, Microsoft, NVIDIA** (bundled from real filings).")
+    covered = ", ".join(_DEMO_TICKERS) if _DEMO_TICKERS else "AAPL, MSFT, NVDA"
+    st.caption(
+        f"Hosted demo covers **{covered}** (bundled from real filings). Ask for a figure that "
+        "isn't in the data and it will decline rather than guess."
+    )
 
     if st.button("Research it ✨", type="primary"):
         status = st.status(
@@ -143,23 +169,44 @@ def _try_it() -> None:
             status.caption(step.observation[:140])
 
         try:
-            agent = ResearchAgent(LLMClient(), make_dispatch(_registry()), max_steps=6)
+            agent = ResearchAgent(LLMClient(), make_dispatch(_registry()), max_steps=8)
             report = agent.run(task, on_step=_on_step)
         except Exception as exc:  # noqa: BLE001 - surface provider/network errors to the user
             status.update(label="⚠️ Couldn't finish", state="error")
             st.error(f"Something went wrong: {exc}")
             st.stop()
 
-        status.update(label="✅ Done", state="complete")
-        st.balloons()
-        st.success(f"### {report.summary}")
-        if report.trend and report.trend.lower() != "n/a":
-            st.caption(f"Verdict: **{report.trend}**")
+        if report.trend == "abstained":
+            status.update(label="🛑 Abstained", state="complete")
+            st.info(f"**{report.summary}**\n\nThis is by design — it won't invent a figure.")
+        else:
+            status.update(label="✅ Done", state="complete")
+            st.balloons()
+            st.success(f"### {report.summary}")
+            if report.trend and report.trend.lower() != "n/a":
+                st.caption(f"Verdict: **{report.trend}**")
         tel = report.telemetry
         st.caption(
             f"✨ {tel.tool_calls} tool calls · {tel.succeeded} verified · "
             f"{tel.corrections} self-correction(s)"
         )
+        _revenue_chart(task)
+
+
+def _revenue_chart(task: str) -> None:
+    """Show a revenue-by-year line chart for any demo companies named in the question."""
+    mentioned = [t for t in _DEMO_TICKERS if re.search(rf"\b{t}\b", task, re.IGNORECASE)]
+    series: dict[str, dict[int, float]] = {}
+    for ticker in mentioned:
+        workspace = _registry().get(ticker)
+        history = _revenue_history(workspace) if workspace else {}
+        if history:
+            series[ticker] = history
+    if not series:
+        return
+    st.markdown("##### Revenue by fiscal year ($B)")
+    st.line_chart(pd.DataFrame(series).sort_index())
+    st.caption("Context from the same filed figures the agent used — not a separate source.")
 
 
 def _results() -> None:
