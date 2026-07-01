@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from ledgerlens.agent.agent import ResearchAgent
 from ledgerlens.agent.schema import AgentAction
 from ledgerlens.agent.tools import ToolResult, tool_compute
+from ledgerlens.agent.workspace import load_workspace_bundle
 
 
 class _ScriptedClient:
@@ -78,3 +80,14 @@ def test_compute_uses_executor_and_grounds_to_prior_figures() -> None:
 
     fabricated = tool_compute("percent_change", [143015000000, 999000000000], ledger)
     assert not fabricated.ok  # 999B was never returned by a tool
+
+
+def test_committed_demo_bundle_loads() -> None:
+    bundle = (
+        Path(__file__).resolve().parents[1] / "ledgerlens" / "agent" / "demo_data" / "AAPL.json"
+    )
+    if not bundle.exists():
+        return  # bundles are optional; skip if not generated
+    workspace = load_workspace_bundle(bundle)
+    assert workspace.ticker == "AAPL"
+    assert len(workspace.facts) > 0

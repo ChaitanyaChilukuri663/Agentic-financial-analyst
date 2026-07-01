@@ -10,6 +10,7 @@ fabricate one.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from ledgerlens.agent.prompts import build_step_messages
@@ -91,7 +92,9 @@ class ResearchAgent:
         self.dispatch = dispatch
         self.max_steps = max_steps
 
-    def run(self, task: str) -> Report:
+    def run(
+        self, task: str, *, on_step: Callable[[AgentStep], None] | None = None
+    ) -> Report:
         steps: list[AgentStep] = []
         telemetry = AgentTelemetry()
         prev_failed = False
@@ -106,8 +109,11 @@ class ResearchAgent:
             key = _action_key(action)
             if key in seen:
                 note = "already tried this action; change approach"
-                steps.append(_to_step(action, ToolResult(action.tool, False, "", note=note)))
+                step = _to_step(action, ToolResult(action.tool, False, "", note=note))
+                steps.append(step)
                 prev_failed = True
+                if on_step is not None:
+                    on_step(step)
                 continue
             seen.add(key)
             result = self.dispatch(action)
@@ -117,7 +123,10 @@ class ResearchAgent:
             if result.ok and prev_failed:
                 telemetry.corrections += 1
             prev_failed = not result.ok
-            steps.append(_to_step(action, result))
+            step = _to_step(action, result)
+            steps.append(step)
+            if on_step is not None:
+                on_step(step)
         # Step budget reached — force a final answer from what we have.
         final = self.client.chat_structured(
             build_step_messages(task, _progress(steps) + "\n(Step budget reached — finish now.)"),

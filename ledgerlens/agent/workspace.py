@@ -1,23 +1,26 @@
 """Per-company filing workspace + a registry that resolves tickers to filings.
 
-A workspace holds everything the agent's tools need for one company: a BM25 index over the
-latest 10-K's chunks, and the company's XBRL facts. The registry resolves a ticker to a CIK
-(via SEC's company_tickers.json) and builds/caches a workspace on demand — which is what
-lets the agent work across multiple companies.
+A workspace holds what the agent's tools need for one company: a BM25 index over the latest
+10-K's chunks, plus its XBRL facts. The registry serves a **committed demo bundle** if one
+exists (so the hosted demo needs no live SEC calls — SEC blocks shared cloud IPs), and
+otherwise resolves the ticker → CIK and fetches live (local dev / other tickers).
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from decimal import Decimal
+from pathlib import Path
 
 from ledgerlens.ingest.edgar import EdgarClient
 from ledgerlens.ingest.filing import parse_filing_html
 from ledgerlens.ingest.xbrl import XbrlFact, parse_company_facts
 from ledgerlens.retrieval.bm25 import Bm25Index
-from ledgerlens.retrieval.chunk import chunk_filing
+from ledgerlens.retrieval.chunk import Chunk, chunk_filing
 
 _TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
+_BUNDLE_DIR = Path(__file__).parent / "demo_data"
 
 
 @dataclass
@@ -35,8 +38,37 @@ class FilingWorkspace:
         return "\n".join(chunk.text for chunk in self.bm25.search(query, k))
 
 
+def load_workspace_bundle(path: Path) -> FilingWorkspace:
+    """Build a workspace from a committed demo bundle JSON (no network)."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    chunks = [
+        Chunk(chunk_id=c["id"], text=c["text"], kind=c.get("kind", "text")) for c in data["chunks"]
+    ]
+    facts = [
+        XbrlFact(
+            taxonomy=f["taxonomy"],
+            concept=f["concept"],
+            unit=f["unit"],
+            value=Decimal(f["value"]),
+            period_end=f["period_end"],
+            fiscal_year=f["fiscal_year"],
+            fiscal_period=f["fiscal_period"],
+            form=f["form"],
+        )
+        for f in data["facts"]
+    ]
+    return FilingWorkspace(
+        ticker=data["ticker"],
+        cik=data["cik"],
+        title=data["title"],
+        filing_url=data["filing_url"],
+        bm25=Bm25Index(chunks),
+        facts=facts,
+    )
+
+
 class WorkspaceRegistry:
-    """Resolves tickers -> CIK and builds/caches a :class:`FilingWorkspace` per company."""
+    """Serve a committed demo bundle if present, else resolve ticker → CIK and fetch live."""
 
     def __init__(self, edgar: EdgarClient) -> None:
         self.edgar = edgar
@@ -52,6 +84,10 @@ class WorkspaceRegistry:
     def get(self, ticker: str) -> FilingWorkspace | None:
         key = (ticker or "").strip().upper()
         if key in self._cache:
+            return self._cache[key]
+        bundle = _BUNDLE_DIR / f"{key}.json"
+        if bundle.exists():
+            self._cache[key] = load_workspace_bundle(bundle)
             return self._cache[key]
         info = self._ticker_map().get(key)
         if info is None:
