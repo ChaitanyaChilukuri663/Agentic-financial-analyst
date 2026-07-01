@@ -1,10 +1,13 @@
 # 📊 Agentic Financial Analyst
 
 [![CI](https://github.com/ChaitanyaChilukuri663/Agentic-financial-analyst/actions/workflows/ci.yml/badge.svg)](https://github.com/ChaitanyaChilukuri663/Agentic-financial-analyst/actions/workflows/ci.yml)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://agentic-financial-analyst-mrsrc6ih7tfreggfe8vccd.streamlit.app/)
 
 **Ask a question about a company's financial filing and get an answer you can trust — every
 number is pulled from the filing, computed by a calculator (not the AI), cited to its source,
 and verified. If it can't verify a figure, it says so instead of guessing.**
+
+### ▶️ [Try the live demo](https://agentic-financial-analyst-mrsrc6ih7tfreggfe8vccd.streamlit.app/) — ask about Apple, Microsoft, NVIDIA, Google, Amazon, or Meta.
 
 ![Demo preview](docs/demo-preview.svg)
 
@@ -62,6 +65,8 @@ Every claim is backed by a real evaluation ([full details](evals/results.md)):
 | **Agent benchmark** | 23 labelled questions: **19/19** answer accuracy, **4/4** abstention, **100% faithful** — every number in every answer traces to a verified figure ([details](evals/agent_results.md)) |
 
 ## Demo
+
+**Hosted:** [agentic-financial-analyst.streamlit.app](https://agentic-financial-analyst-mrsrc6ih7tfreggfe8vccd.streamlit.app/) — no setup, ask a question and watch it work. To run locally:
 
 ```bash
 pip install -e ".[demo]"
