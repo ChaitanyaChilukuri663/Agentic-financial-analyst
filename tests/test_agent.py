@@ -75,6 +75,25 @@ def test_agent_self_corrects_after_a_failure() -> None:
     assert report.telemetry.corrections == 1  # recovered right after the failure
 
 
+def test_agent_abstains_after_repeated_failures() -> None:
+    client = _ScriptedClient(
+        [
+            _action("xbrl_value", company="AAPL", query="inventory"),
+            _action("xbrl_value", company="AAPL", query="stock on hand"),
+            _action("xbrl_value", company="AAPL", query="widgets"),
+            _action("xbrl_value", company="AAPL", query="gadgets"),
+        ]
+    )
+
+    def dispatch(action: AgentAction) -> ToolResult:
+        return ToolResult(action.tool, False, "", note="no XBRL fact")
+
+    report = ResearchAgent(client, dispatch, max_steps=8).run("Apple's inventory?")
+    assert report.trend == "abstained"
+    assert "couldn't find" in report.summary.lower()
+    assert report.telemetry.failed >= 3
+
+
 def test_compute_uses_executor_and_grounds_to_prior_figures() -> None:
     ledger = [Decimal("143015000000"), Decimal("168088000000")]
     ok = tool_compute("percent_change", [143015000000, 168088000000], ledger)

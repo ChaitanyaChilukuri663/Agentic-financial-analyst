@@ -84,6 +84,13 @@ def _to_step(action: AgentAction, result: ToolResult) -> AgentStep:
     return AgentStep(action.thought, action.tool, target, observation, result.ok)
 
 
+_MAX_CONSECUTIVE_FAILURES = 3
+_ABSTAIN_SUMMARY = (
+    "I couldn't find the figures needed to answer this in the company's filed data, "
+    "so I'm not able to give a grounded answer."
+)
+
+
 class ResearchAgent:
     """Iterative, self-correcting, multi-tool, multi-company ReAct agent over LedgerLens."""
 
@@ -98,6 +105,7 @@ class ResearchAgent:
         steps: list[AgentStep] = []
         telemetry = AgentTelemetry()
         prev_failed = False
+        consecutive_failures = 0
         seen: set[str] = set()
         for _ in range(self.max_steps):
             action = self.client.chat_structured(
@@ -112,8 +120,11 @@ class ResearchAgent:
                 step = _to_step(action, ToolResult(action.tool, False, "", note=note))
                 steps.append(step)
                 prev_failed = True
+                consecutive_failures += 1
                 if on_step is not None:
                     on_step(step)
+                if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                    return Report(task, _ABSTAIN_SUMMARY, "abstained", steps, telemetry)
                 continue
             seen.add(key)
             result = self.dispatch(action)
@@ -123,10 +134,14 @@ class ResearchAgent:
             if result.ok and prev_failed:
                 telemetry.corrections += 1
             prev_failed = not result.ok
+            consecutive_failures = 0 if result.ok else consecutive_failures + 1
             step = _to_step(action, result)
             steps.append(step)
             if on_step is not None:
                 on_step(step)
+            # Repeated dead ends → abstain cleanly instead of grinding to the step limit.
+            if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
+                return Report(task, _ABSTAIN_SUMMARY, "abstained", steps, telemetry)
         # Step budget reached — force a final answer from what we have.
         final = self.client.chat_structured(
             build_step_messages(task, _progress(steps) + "\n(Step budget reached — finish now.)"),
